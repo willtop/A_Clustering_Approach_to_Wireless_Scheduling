@@ -1,93 +1,83 @@
 import numpy as np
-from sklearn.cluster import SpectralClustering
 from sklearn.cluster import KMeans
-import scipy
+from scipy import linalg as LA
+import matplotlib.pyplot as plt
+import sys
+sys.path.append("../Tools/")
+import utils
 
 ADJ_MAT_DESIGN = 'A'
-
-SANITY_CHECK=True
-
-def laplacian(A):
-    """Computes the symetric normalized laplacian.
-    L = D^{-1/2} A D{-1/2}
-    """
-    D = np.zeros(A.shape)
-    w = np.sum(A, axis=0)
-    D.flat[::len(w) + 1] = w ** (-0.5)  # set the diag of D to w
-    return D.dot(A).dot(D)
-
-
-def k_means(X, n_clusters):
-    kmeans = KMeans(n_clusters=n_clusters, random_state=1231)
-    return kmeans.fit(X).labels_
-
-
-def spectral_clustering_3rd(affinity, n_clusters, cluster_method=k_means):
-    L = laplacian(affinity)
-    eig_val, eig_vect = scipy.sparse.linalg.eigs(L, n_clusters)
-    X = eig_vect.real
-    rows_norm = np.linalg.norm(X, axis=1, ord=2)
-    Y = (X.T / rows_norm).T
-    labels = cluster_method(Y, n_clusters)
-    return labels
-
-def compute_spectral_clustering_explicit_kmeans(adj_mat, num_of_clusters):
-    N = np.shape(adj_mat)[0]
-    assert np.shape(adj_mat) == (N, N)
-    assert np.all(np.transpose(adj_mat) == adj_mat)
-    laplace_mat = np.diag(np.sum(adj_mat, axis=1)) - adj_mat
-    eig_vals, eig_vecs = np.linalg.eig(laplace_mat)
-    smallest_eigval_indices = np.argsort(eig_vals)[:num_of_clusters]
-    eig_vecs_selected = eig_vecs[:, smallest_eigval_indices]
-    km = KMeans(n_clusters=num_of_clusters, n_init=100).fit(eig_vecs_selected)
-    return km.labels_
-
-def compute_spectral_clustering(adj_mat, num_of_clusters):
-    N = np.shape(adj_mat)[0]
-    assert np.shape(adj_mat) == (N, N)
-    assert np.all(np.transpose(adj_mat) == adj_mat)
-    sc = SpectralClustering(n_clusters=num_of_clusters, affinity='precomputed', n_init=100, assign_labels='kmeans')
-    assignments = sc.fit_predict(adj_mat)
-    assert np.shape(assignments) == (N,)
-    return assignments
+VISUALIZE = True
 
 # For now, just construct adjacency matrix layout by layout
-def compute_adj_mat_from_CSI(CSI_mat):
-    number_of_links = np.shape(CSI_mat)[0]
-    assert np.shape(CSI_mat) == (number_of_links, number_of_links)
+def compute_adj_mat_from_gains(gains_mat):
+    number_of_links = np.shape(gains_mat)[0]
+    assert np.shape(gains_mat) == (number_of_links, number_of_links)
     if(ADJ_MAT_DESIGN=='A'):
-        adj_mat = np.maximum(CSI_mat, np.transpose(CSI_mat)) # no need to clear-off the diagonal
+        adj_mat = np.maximum(gains_mat, np.transpose(gains_mat)) # no need to clear-off the diagonal
     elif(ADJ_MAT_DESIGN=='B'):
         adj_mat = 0
     assert np.shape(adj_mat) == (number_of_links, number_of_links)
     return adj_mat
 
-if(__name__=="__main__"):
-    # check if calling the spectral clustering indeed returns results as the algorithm describes
-    if(SANITY_CHECK):
-        num_of_clusters = 3
-        print("Sanity Check with Number of clusters: ", num_of_clusters)
-        # Randomly generate adjacency matrix
-        adj_mat = np.random.sample([7,7])
-        adj_mat = np.maximum(adj_mat, np.transpose(adj_mat))
-        # # Deterministic layouts (This layout illustrates my explicit calling method returning unreasonable solutions)
-        # adj_mat = np.array([[0,1,1,0,0,0,0],
-        #                     [1,0,1,1,0,1,0],
-        #                     [1,1,0,0,0,0,0],
-        #                     [0,1,0,0,1,0,0],
-        #                     [0,0,0,1,0,0,0],
-        #                     [0,1,0,0,0,0,1],
-        #                     [0,0,0,0,0,1,0]])
-        expcall_result = compute_spectral_clustering_explicit_kmeans(adj_mat, num_of_clusters)
-        print("Explicitly call kmeans returns partitions: ")
-        print(expcall_result)
-        sc_result = compute_spectral_clustering(adj_mat, num_of_clusters)
-        print("Direct SC object returns partitions: ")
-        print(sc_result)
-        # try a 3rd online explictly coded different method 
-        third_result = spectral_clustering_3rd(adj_mat, num_of_clusters)
-        print("3rd online implementation: ")
-        print(third_result)
-        print("Sanity Check Finished")
+def visualize_layout_clusters(layout, cluster_assignments):
+    num_of_links = np.shape(layout)[0]
+    num_of_clusters = np.max(cluster_assignments)+1 # zero indexing
+    assert np.shape(layout)==(num_of_links, 4)
+    assert np.shape(cluster_assignments)==(num_of_links, )
+    # assign colors to clusters
+    color_map = plt.get_cmap('gist_rainbow', num_of_clusters)
+    links_colors = []
+    for i in range(num_of_links):
+        links_colors.append(color_map(cluster_assignments[i]))
+    utils.plot_allocs_on_layout(plt.gca(), layout, links_colors, "Clusters Visualization with {} clusters".format(num_of_clusters), whether_allocs=False, cluster_assignments=cluster_assignments)
+    plt.show()
+    return
 
 
+# For now, schedule one layout at a time
+def schedule(general_para, layout, gains_mat):
+    N = np.shape(gains_mat)[0]
+    assert np.shape(gains_mat) == (N, N)
+    assert np.shape(layout) == (N, 4)
+    adj_mat = compute_adj_mat_from_gains(gains_mat)
+    assert np.shape(adj_mat) == (N, N)
+    assert np.all(np.transpose(adj_mat) == adj_mat)
+    laplace_mat = np.diag(np.sum(adj_mat, axis=1)) - adj_mat
+    eig_vals, eig_vecs = np.linalg.eig(laplace_mat)
+    if (VISUALIZE):
+        sorted_eig_vals = np.sort(eig_vals)
+        eig_vals_diff = np.diff(sorted_eig_vals)
+        eig_vals_diff_ratios = eig_vals_diff[:-1] / eig_vals_diff[1:]
+        turning_eig_val_index = np.argmin(eig_vals_diff_ratios) + 1
+        plt.title("Eigenvalues of {}X{} Laplacian Matrix".format(N,N))
+        plt.plot(sorted_eig_vals, "*-")
+        for i in range(np.size(eig_vals)):
+            plt.annotate(i + 1, [i, sorted_eig_vals[i]])
+        plt.show()
+    # Try number of clusters one by one
+    max_sumrate = 0
+    gains_diagonal = utils.get_diagonal_gains(np.expand_dims(gains_mat,axis=0))
+    gains_nondiagonal = utils.get_nondiagonal_gains(np.expand_dims(gains_mat,axis=0))
+    for num_of_links_on in range(2, N): # not including activating just one link or all active
+        smallest_eigval_indices = np.argsort(eig_vals)[1:num_of_links_on] # no need to take the zero eigen value
+        eig_vecs_selected = eig_vecs[:, smallest_eigval_indices]
+        km = KMeans(n_clusters=num_of_links_on, n_init=10).fit(eig_vecs_selected)
+        assignments = km.labels_
+        if (VISUALIZE):
+            visualize_layout_clusters(layout, assignments)
+        allocations = np.zeros(N)
+        # Select one strongest link from each cluster to schedule
+        for i in range(num_of_links_on):
+            links_in_the_cluster = np.where(assignments == i)[0]
+            strongest_link_in_the_cluster = links_in_the_cluster[np.argmax(np.diag(gains_mat)[links_in_the_cluster])]
+            assert allocations[strongest_link_in_the_cluster] == 0, "having duplicate entry apperance across clusters"
+            allocations[strongest_link_in_the_cluster] = 1
+        # compute the corresponding rate to this allocation
+        rates = utils.compute_rates(general_para, np.expand_dims(allocations, axis=0), gains_diagonal, gains_nondiagonal)
+        assert np.shape(rates)==(1,N)
+        sumrate = np.sum(rates)
+        if(sumrate > max_sumrate):
+            best_allocations = allocations
+            max_sumrate = sumrate
+    return best_allocations
