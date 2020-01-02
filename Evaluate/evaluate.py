@@ -11,6 +11,7 @@ import general_parameters
 import utils
 import proportional_fairness_scheduling
 import Spectral_Clustering
+import Hierarchical_Clustering
 import K_Means
 
 debug_visualize = False # visualize allocations and rates of each method
@@ -66,12 +67,13 @@ if(__name__ =='__main__'):
     # Integer results
     all_allocs["FP Scheduling"] = benchmarks.FP(general_para, gains, np.ones([number_of_layouts, N]), scheduling_output=True)
     n_links_on_FP = np.sum(all_allocs["FP Scheduling"],axis=1)
+    print("From FP scheduling, average number of links activated per layout: {}/{} links".format(np.mean(n_links_on_FP), N))
 
     print("Spectral Clustering...")
     cluster_assignments = []
     allocs = []
     for i in range(number_of_layouts):
-        if ((i + 1) * 100 / number_of_layouts % 25 == 0):
+        if ((i + 1) * 100 / number_of_layouts % 50 == 0):
             print("At {}/{} layouts.".format(i + 1, number_of_layouts))
         clusters_one_layout = Spectral_Clustering.clustering(layouts[i], gains[i], n_links_on_FP[i])
         allocs_one_layout = Spectral_Clustering.scheduling(gains[i], clusters_one_layout)
@@ -83,11 +85,27 @@ if(__name__ =='__main__'):
     all_allocs["Spectral Clustering"] = allocs
     all_cluster_assignments["Spectral Clustering"] = cluster_assignments
 
+    print("Hierarchical Clustering...")
+    cluster_assignments = []
+    allocs = []
+    for i in range(number_of_layouts):
+        if ((i + 1) * 100 / number_of_layouts % 50 == 0):
+            print("At {}/{} layouts.".format(i + 1, number_of_layouts))
+        clusters_one_layout = Hierarchical_Clustering.clustering(layouts[i], gains[i], n_links_on_FP[i])
+        allocs_one_layout = Hierarchical_Clustering.scheduling(gains[i], clusters_one_layout)
+        cluster_assignments.append(clusters_one_layout)
+        allocs.append(allocs_one_layout)
+    cluster_assignments = np.array(cluster_assignments)
+    allocs = np.array(allocs)
+    assert np.shape(cluster_assignments) == np.shape(allocs) == (number_of_layouts, N)
+    all_allocs["Hierarchical Clustering"] = allocs
+    all_cluster_assignments["Hierarchical Clustering"] = cluster_assignments
+
     print("K-Means...")
     cluster_assignments = []
     allocs = []
     for i in range(number_of_layouts):
-        if ((i + 1) * 100 / number_of_layouts % 25 == 0):
+        if ((i + 1) * 100 / number_of_layouts % 50 == 0):
             print("At {}/{} layouts.".format(i + 1, number_of_layouts))
         clusters_one_layout = K_Means.clustering(layouts[i], n_links_on_FP[i])
         allocs_one_layout = K_Means.scheduling(layouts[i], clusters_one_layout)
@@ -119,7 +137,7 @@ if(__name__ =='__main__'):
         links_rates_I[method_key] = utils.compute_rates(general_para, all_allocs[method_key], gains_diagonal, gains_nondiagonal)
         assert np.shape(links_rates_I[method_key]) == (number_of_layouts, N)
         evaluate_results_I[method_key] = np.sum(links_rates_I[method_key], axis=1)
-    compute_avg_ratio(evaluate_results_I, "")
+    compute_avg_ratio(evaluate_results_I, "Sum Rate Single Timeslot")
     plot_rates_CDF(general_para, evaluate_results_I, "Sum Rate Single Timeslot")
 
     # visualize allocations for worst and best layouts, 3 each
@@ -128,7 +146,7 @@ if(__name__ =='__main__'):
             if(method_key in ["All Active", "Random Power Control", "Random Scheduling", "Strongest Link", "Directlinks Inverse Proportions"]):
                 continue # Don't plot for these trivial allocations
             fig, axs = plt.subplots(nrows=2,ncols=3)
-            fig.suptitle("{} allocs for {}".format(method_key, evaluate_task))
+            fig.suptitle("{} allocs for Sum Rate Single Timeslot".format(method_key))
             layout_indices_ranked = np.argsort(evaluate_results_I[method_key])
             rank_titles = {0: "Worst",   1: "2nd Worst", 2: "3rd Worst",  -1: "Best", -2: "2nd Best",  -3: "3rd Best"}
             for i, rank_tuple in enumerate(rank_titles.items()):
@@ -161,8 +179,9 @@ if(__name__ =='__main__'):
     print("Evaluating log long term avg rate results...")
 
     all_allocs_prop_fair["FP Scheduling"], links_rates_prop_fair["FP Scheduling"] = proportional_fairness_scheduling.FP_prop_fair(general_para, gains, gains_diagonal, gains_nondiagonal)
-    all_allocs_prop_fair["Spectral Clustering"], links_rates_prop_fair["Spectral Clustering"] = proportional_fairness_scheduling.Spectral_Clustering_prop_fair(general_para, gains_diagonal, gains_nondiagonal, all_cluster_assignments["Spectral Clustering"])
     all_allocs_prop_fair["K-Means"], links_rates_prop_fair["K-Means"] = proportional_fairness_scheduling.K_Means_prop_fair(general_para, gains_diagonal, gains_nondiagonal, all_cluster_assignments["K-Means"])
+    all_allocs_prop_fair["Spectral Clustering"], links_rates_prop_fair["Spectral Clustering"] = proportional_fairness_scheduling.Spectral_Clustering_prop_fair(general_para, gains_diagonal, gains_nondiagonal, all_cluster_assignments["Spectral Clustering"])
+    all_allocs_prop_fair["Hierarchical Clustering"], links_rates_prop_fair["Hierarchical Clustering"] = proportional_fairness_scheduling.Hierarchical_Clustering_prop_fair(general_para, gains_diagonal, gains_nondiagonal, all_cluster_assignments["Hierarchical Clustering"])
     all_allocs_prop_fair["Greedy Scheduling"], links_rates_prop_fair["Greedy Scheduling"] = proportional_fairness_scheduling.Greedy_Scheduling_prop_fair(general_para, gains_diagonal, gains_nondiagonal)
     all_allocs_prop_fair["All Active"], links_rates_prop_fair["All Active"] = proportional_fairness_scheduling.all_active_prop_fair(general_para, gains_diagonal, gains_nondiagonal)
     all_allocs_prop_fair["Random Scheduling"], links_rates_prop_fair["Random Scheduling"] = proportional_fairness_scheduling.random_scheduling_prop_fair(general_para, gains_diagonal, gains_nondiagonal)
@@ -179,6 +198,6 @@ if(__name__ =='__main__'):
         links_avg_rates_II[method_key] = links_avg_rates_II[method_key].flatten() # flatten for plotting
         print("[{}]:{};".format(method_key, round(np.mean(evaluate_result),2)), end="")
     print("\n")
-    plot_rates_CDF(general_para, links_avg_rates_II, task_titles_II[evaluate_option])
+    plot_rates_CDF(general_para, links_avg_rates_II, "Log Utilities Multiple Timeslots")
 
     print("Script Completed Successfully!")
