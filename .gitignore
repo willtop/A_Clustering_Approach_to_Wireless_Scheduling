@@ -1,4 +1,10 @@
 *.xml
 *.iml
 *.pyc
+*.npy
+*.png
+*.mat
+*.fig
+*.jpg
+*.eps
 Data/

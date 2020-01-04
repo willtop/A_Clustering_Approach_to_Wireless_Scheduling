@@ -7,33 +7,37 @@ from itertools import cycle
 def proportional_update_weights(general_para, rates, weights):
     return 1 / (general_para.alpha_proportional_fairness_update / weights + (1 - general_para.alpha_proportional_fairness_update) * rates)
 
-def FP_prop_fair(general_para, gains, gains_diagonal, gains_nondiagonal):
-    print("Sequential scheduling for FP...")
-    number_of_layouts, N = np.shape(gains_diagonal)
+def FP_prop_fair(general_para, gains, directlink_channel_losses, crosslink_channel_losses):
+    number_of_layouts, N = np.shape(directlink_channel_losses)
     allocs_alltime = []
+    allocs_raw_alltime = []
     rates_alltime = []
+    prop_weights_alltime = []
     prop_weights = np.ones([number_of_layouts, N])
     for i in range(general_para.log_utility_time_slots):
         if ((i + 1) * 100 / general_para.log_utility_time_slots % 50 == 0):
-            print("At {}/{} time slots...".format(i + 1, general_para.log_utility_time_slots))
-        allocs = benchmarks.FP(general_para, gains, prop_weights, scheduling_output=True)
-        rates = utils.compute_rates(general_para, allocs, gains_diagonal, gains_nondiagonal)
+            print("[FP Log Util] At {}/{} time slots...".format(i + 1, general_para.log_utility_time_slots))
+        allocs, raw_allocs = benchmarks.FP(general_para, gains, prop_weights, scheduling_output=True)
+        rates = utils.compute_rates(general_para, allocs, directlink_channel_losses, crosslink_channel_losses)
         allocs_alltime.append(allocs)
+        allocs_raw_alltime.append(raw_allocs)
         rates_alltime.append(rates)
+        prop_weights_alltime.append(prop_weights)
         prop_weights = proportional_update_weights(general_para, rates, prop_weights)
     allocs_alltime = np.transpose(np.array(allocs_alltime), (1, 0, 2))
     rates_alltime = np.transpose(np.array(rates_alltime), (1, 0, 2))
+    allocs_raw_alltime = np.transpose(np.array(allocs_raw_alltime), (1, 0, 2))
+    prop_weights_alltime = np.transpose(np.array(prop_weights_alltime), (1, 0, 2))
+    np.save("proportional_fairness_weights_{}.npy".format(general_para.setting_str), prop_weights_alltime)
     assert np.shape(allocs_alltime) == np.shape(rates_alltime) == (number_of_layouts, general_para.log_utility_time_slots, N)
-    print("[FP multiple timeslots] Computation finished!")
     return allocs_alltime, rates_alltime
 
 # For now, the round robin iterating order is random within each cluster (with fixed orders for each round)
 # unlike prioritizing the link with the strongest direct link gain
 # Can't think of a way to parallelize among layouts or even clusters within the same layout. For now, linearly
 # go through each cluster within each layout with cycle iterators.
-def Spectral_Clustering_prop_fair(general_para, gains_diagonal, gains_nondiagonal, cluster_assignments):
-    print("Sequential scheduling for Spectral Clustering...")
-    number_of_layouts, N = np.shape(gains_diagonal)
+def Spectral_Clustering_prop_fair(general_para, directlink_channel_losses, crosslink_channel_losses, cluster_assignments):
+    number_of_layouts, N = np.shape(directlink_channel_losses)
     assert np.shape(cluster_assignments) == (number_of_layouts, N)
     n_clusters = (np.max(cluster_assignments, axis=1)+1).astype(int) # number of layouts
     allocs_alltime = []
@@ -45,33 +49,30 @@ def Spectral_Clustering_prop_fair(general_para, gains_diagonal, gains_nondiagona
         for cluster_id in range(n_clusters[layout_id]):
             iterators_one_layout.append(cycle(np.where(cluster_assignments[layout_id]==cluster_id)[0]))
         iterators_all_layouts.append(iterators_one_layout)
-    print("Iterators construction completed!")
     # Start sequential time slots scheduling
     for time_slot in range(general_para.log_utility_time_slots):
         if ((time_slot + 1) * 100 / general_para.log_utility_time_slots % 50 == 0):
-            print("At {}/{} time slots...".format(time_slot + 1, general_para.log_utility_time_slots))
+            print("[SC Log Util] At {}/{} time slots...".format(time_slot + 1, general_para.log_utility_time_slots))
         allocs = np.zeros([number_of_layouts, N])
         for layout_id in range(number_of_layouts):
             for cluster_id in range(n_clusters[layout_id]):
                 iterator_to_schedule = iterators_all_layouts[layout_id][cluster_id]
                 link_to_schedule = next(iterator_to_schedule)
                 allocs[layout_id][link_to_schedule] = 1
-        rates = utils.compute_rates(general_para, allocs, gains_diagonal, gains_nondiagonal)
+        rates = utils.compute_rates(general_para, allocs, directlink_channel_losses, crosslink_channel_losses)
         allocs_alltime.append(allocs)
         rates_alltime.append(rates)
     allocs_alltime = np.transpose(np.array(allocs_alltime), (1, 0, 2))
     rates_alltime = np.transpose(np.array(rates_alltime), (1, 0, 2))
     assert np.shape(allocs_alltime) == np.shape(rates_alltime) == (number_of_layouts, general_para.log_utility_time_slots, N)
-    print("[Spectral Clustering multiple timeslots] Computation finished")
     return allocs_alltime, rates_alltime
 
 # For now, the round robin iterating order is random within each cluster (with fixed orders for each round)
 # unlike prioritizing the link with the strongest direct link gain
 # Can't think of a way to parallelize among layouts or even clusters within the same layout. For now, linearly
 # go through each cluster within each layout with cycle iterators.
-def Hierarchical_Clustering_prop_fair(general_para, gains_diagonal, gains_nondiagonal, cluster_assignments):
-    print("Sequential scheduling for Hierarchical Clustering...")
-    number_of_layouts, N = np.shape(gains_diagonal)
+def Hierarchical_Clustering_prop_fair(general_para, directlink_channel_losses, crosslink_channel_losses, cluster_assignments):
+    number_of_layouts, N = np.shape(directlink_channel_losses)
     assert np.shape(cluster_assignments) == (number_of_layouts, N)
     n_clusters = (np.max(cluster_assignments, axis=1)+1).astype(int) # number of layouts
     allocs_alltime = []
@@ -83,33 +84,30 @@ def Hierarchical_Clustering_prop_fair(general_para, gains_diagonal, gains_nondia
         for cluster_id in range(n_clusters[layout_id]):
             iterators_one_layout.append(cycle(np.where(cluster_assignments[layout_id]==cluster_id)[0]))
         iterators_all_layouts.append(iterators_one_layout)
-    print("Iterators construction completed!")
     # Start sequential time slots scheduling
     for time_slot in range(general_para.log_utility_time_slots):
         if ((time_slot + 1) * 100 / general_para.log_utility_time_slots % 50 == 0):
-            print("At {}/{} time slots...".format(time_slot + 1, general_para.log_utility_time_slots))
+            print("[HC Log Util] At {}/{} time slots...".format(time_slot + 1, general_para.log_utility_time_slots))
         allocs = np.zeros([number_of_layouts, N])
         for layout_id in range(number_of_layouts):
             for cluster_id in range(n_clusters[layout_id]):
                 iterator_to_schedule = iterators_all_layouts[layout_id][cluster_id]
                 link_to_schedule = next(iterator_to_schedule)
                 allocs[layout_id][link_to_schedule] = 1
-        rates = utils.compute_rates(general_para, allocs, gains_diagonal, gains_nondiagonal)
+        rates = utils.compute_rates(general_para, allocs, directlink_channel_losses, crosslink_channel_losses)
         allocs_alltime.append(allocs)
         rates_alltime.append(rates)
     allocs_alltime = np.transpose(np.array(allocs_alltime), (1, 0, 2))
     rates_alltime = np.transpose(np.array(rates_alltime), (1, 0, 2))
     assert np.shape(allocs_alltime) == np.shape(rates_alltime) == (number_of_layouts, general_para.log_utility_time_slots, N)
-    print("[Hierarchical Clustering multiple timeslots] Computation finished")
     return allocs_alltime, rates_alltime
 
 # For now, the round robin iterating order is random within each cluster (with fixed orders for each round)
 # unlike prioritizing the link with the strongest direct link gain
 # Can't think of a way to parallelize among layouts or even clusters within the same layout. For now, linearly
 # go through each cluster within each layout with cycle iterators.
-def K_Means_prop_fair(general_para, gains_diagonal, gains_nondiagonal, cluster_assignments):
-    print("Sequential scheduling for K Means...")
-    number_of_layouts, N = np.shape(gains_diagonal)
+def K_Means_prop_fair(general_para, directlink_channel_losses, crosslink_channel_losses, cluster_assignments):
+    number_of_layouts, N = np.shape(directlink_channel_losses)
     assert np.shape(cluster_assignments) == (number_of_layouts, N)
     n_clusters = (np.max(cluster_assignments, axis=1) + 1).astype(int)  # number of layouts
     allocs_alltime = []
@@ -121,52 +119,46 @@ def K_Means_prop_fair(general_para, gains_diagonal, gains_nondiagonal, cluster_a
         for cluster_id in range(n_clusters[layout_id]):
             iterators_one_layout.append(cycle(np.where(cluster_assignments[layout_id] == cluster_id)[0]))
         iterators_all_layouts.append(iterators_one_layout)
-    print("Iterators construction completed!")
     # Start sequential time slots scheduling
     for time_slot in range(general_para.log_utility_time_slots):
         if ((time_slot + 1) * 100 / general_para.log_utility_time_slots % 50 == 0):
-            print("At {}/{} time slots...".format(time_slot + 1, general_para.log_utility_time_slots))
+            print("[KM Log Util] At {}/{} time slots...".format(time_slot + 1, general_para.log_utility_time_slots))
         allocs = np.zeros([number_of_layouts, N])
         for layout_id in range(number_of_layouts):
             for cluster_id in range(n_clusters[layout_id]):
                 iterator_to_schedule = iterators_all_layouts[layout_id][cluster_id]
                 link_to_schedule = next(iterator_to_schedule)
                 allocs[layout_id][link_to_schedule] = 1
-        rates = utils.compute_rates(general_para, allocs, gains_diagonal, gains_nondiagonal)
+        rates = utils.compute_rates(general_para, allocs, directlink_channel_losses, crosslink_channel_losses)
         allocs_alltime.append(allocs)
         rates_alltime.append(rates)
     allocs_alltime = np.transpose(np.array(allocs_alltime), (1, 0, 2))
     rates_alltime = np.transpose(np.array(rates_alltime), (1, 0, 2))
     assert np.shape(allocs_alltime) == np.shape(rates_alltime) == (number_of_layouts, general_para.log_utility_time_slots, N)
-    print("[K Means multiple timeslots] Computation finished")
     return allocs_alltime, rates_alltime
 
-def Greedy_Scheduling_prop_fair(general_para, gains_diagonal, gains_nondiagonal):
-    print("Sequential scheduling for Greedy...")
-    number_of_layouts, N = np.shape(gains_diagonal)
+def Greedy_Scheduling_prop_fair(general_para, directlink_channel_losses, crosslink_channel_losses):
+    number_of_layouts, N = np.shape(directlink_channel_losses)
     allocs_alltime = []
     rates_alltime = []
     prop_weights = np.ones([number_of_layouts, N])
     for i in range(general_para.log_utility_time_slots):
         if ((i + 1) * 100 / general_para.log_utility_time_slots % 50 == 0):
-            print("At {}/{} time slots...".format(i + 1, general_para.log_utility_time_slots))
-        allocs = benchmarks.greedy_scheduling(general_para, gains_diagonal, gains_nondiagonal, prop_weights)
-        rates = utils.compute_rates(general_para, allocs, gains_diagonal, gains_nondiagonal)
+            print("[Greedy Log Util] At {}/{} time slots...".format(i + 1, general_para.log_utility_time_slots))
+        allocs = benchmarks.greedy_scheduling(general_para, directlink_channel_losses, crosslink_channel_losses, prop_weights)
+        rates = utils.compute_rates(general_para, allocs, directlink_channel_losses, crosslink_channel_losses)
         allocs_alltime.append(allocs)
         rates_alltime.append(rates)
         prop_weights = proportional_update_weights(general_para, rates, prop_weights)
     allocs_alltime = np.transpose(np.array(allocs_alltime), (1, 0, 2))
     rates_alltime = np.transpose(np.array(rates_alltime), (1, 0, 2))
     assert np.shape(allocs_alltime) == np.shape(rates_alltime) == (number_of_layouts, general_para.log_utility_time_slots, N)
-    np.save(general_para.test_dir + general_para.file_names["Greedy_Multi_Timeslots_Allocs"], allocs_alltime)
-    np.save(general_para.test_dir + general_para.file_names["Greedy_Multi_Timeslots_Rates"], rates_alltime)
-    print("[Greedy multiple timeslots] Computation finished and results saved")
     return allocs_alltime, rates_alltime
 
-def all_active_prop_fair(general_para, gains_diagonal, gains_nondiagonal):
-    number_of_layouts, N = np.shape(gains_diagonal)
+def all_active_prop_fair(general_para, directlink_channel_losses, crosslink_channel_losses):
+    number_of_layouts, N = np.shape(directlink_channel_losses)
     allocs = np.ones([number_of_layouts, N]).astype(float)
-    rates = utils.compute_rates(general_para, allocs, gains_diagonal, gains_nondiagonal)
+    rates = utils.compute_rates(general_para, allocs, directlink_channel_losses, crosslink_channel_losses)
     allocs_alltime = np.tile(np.expand_dims(allocs, axis=0), (general_para.log_utility_time_slots, 1, 1))
     rates_alltime = np.tile(np.expand_dims(rates, axis=0), (general_para.log_utility_time_slots, 1, 1))
     allocs_alltime = np.transpose(np.array(allocs_alltime), (1, 0, 2))
@@ -174,12 +166,12 @@ def all_active_prop_fair(general_para, gains_diagonal, gains_nondiagonal):
     assert np.shape(allocs_alltime) == np.shape(rates_alltime) == (number_of_layouts, general_para.log_utility_time_slots, N)
     return allocs_alltime, rates_alltime
 
-def random_scheduling_prop_fair(general_para, gains_diagonal, gains_nondiagonal):
-    number_of_layouts, N = np.shape(gains_diagonal)
+def random_scheduling_prop_fair(general_para, directlink_channel_losses, crosslink_channel_losses):
+    number_of_layouts, N = np.shape(directlink_channel_losses)
     allocs_alltime = np.random.randint(2,size=(general_para.log_utility_time_slots, number_of_layouts, N)).astype(float)
     rates_alltime = []
     for i in range(general_para.log_utility_time_slots):
-        rates_oneslot = utils.compute_rates(general_para, allocs_alltime[i], gains_diagonal, gains_nondiagonal)
+        rates_oneslot = utils.compute_rates(general_para, allocs_alltime[i], directlink_channel_losses, crosslink_channel_losses)
         rates_alltime.append(rates_oneslot)
     allocs_alltime = np.transpose(np.array(allocs_alltime), (1, 0, 2))
     rates_alltime = np.transpose(np.array(rates_alltime), (1, 0, 2))
@@ -188,15 +180,15 @@ def random_scheduling_prop_fair(general_para, gains_diagonal, gains_nondiagonal)
     return allocs_alltime, rates_alltime
 
 # Vanilla round robin: iterating over links, one at a time, blindly based on link indices
-def vanilla_round_robin_prop_fair(general_para, gains_diagonal, gains_nondiagonal):
-    number_of_layouts, N = np.shape(gains_diagonal)
+def vanilla_round_robin_prop_fair(general_para, directlink_channel_losses, crosslink_channel_losses):
+    number_of_layouts, N = np.shape(directlink_channel_losses)
     allocs_alltime = []
     rates_alltime = []
     iterator = cycle(range(N))
     for i in range(general_para.log_utility_time_slots):
         allocs_oneslot = np.zeros([number_of_layouts, N])
         allocs_oneslot[:, next(iterator)] = 1
-        rates_oneslot = utils.compute_rates(general_para, allocs_oneslot, gains_diagonal, gains_nondiagonal)
+        rates_oneslot = utils.compute_rates(general_para, allocs_oneslot, directlink_channel_losses, crosslink_channel_losses)
         allocs_alltime.append(allocs_oneslot)
         rates_alltime.append(rates_oneslot)
     allocs_alltime = np.transpose(np.array(allocs_alltime), (1, 0, 2))
@@ -216,7 +208,7 @@ def vanilla_round_robin_prop_fair(general_para, gains_diagonal, gains_nondiagona
     #         allocs_oneslot[np.arange(test_layouts), np.argmax(weights,axis=1)] = 1
     #         allocs.append(allocs_oneslot)
     #         # compute rates parallely over many layouts
-    #         rates_oneslot = utils.compute_rates(general_para, allocs_oneslot, test_gains_diagonal, test_gains_nondiagonal) # layouts X N
+    #         rates_oneslot = utils.compute_rates(general_para, allocs_oneslot, test_directlink_channel_losses, test_crosslink_channel_losses) # layouts X N
     #         rates.append(rates_oneslot)
     #         weights = utils.proportional_update_weights(general_para, weights, rates_oneslot)
     #     allocs = np.transpose(np.array(allocs), (1,0,2)); assert np.shape(allocs) == (test_layouts, test_slots_per_layout, N)
@@ -228,7 +220,7 @@ def vanilla_round_robin_prop_fair(general_para, gains_diagonal, gains_nondiagona
     # if("direct_allocs_backprop" in all_benchmarks):
     #     print("==================================Direct Allocations Backprop Scheduling heuristic===========================")
     #     method_key = "Direct Allocs BackProp"
-    #     allocs, rates = Direct_Allocs_BackProp.direct_backprop(general_para, test_gains_diagonal, test_gains_nondiagonal)
+    #     allocs, rates = Direct_Allocs_BackProp.direct_backprop(general_para, test_directlink_channel_losses, test_crosslink_channel_losses)
     #     all_allocs[method_key] = allocs
     #     all_rates[method_key] = rates
     #
