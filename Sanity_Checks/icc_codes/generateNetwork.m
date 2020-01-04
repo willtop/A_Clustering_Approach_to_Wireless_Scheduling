@@ -2,10 +2,10 @@ function [ G ] = generateNetwork( L )
 
 % ITU-1411
 
-range = 1000; % here and throughout, unit is meter
+range = 500; % here and throughout, unit is meter
 txPosition = (rand(L,1) + 1i*rand(L,1))*range;
-maxDist = 65;
-minDist = 2;
+maxDist = 50;
+minDist = 30;
 
 rxPosition = nan(L,1);
 for i = 1:L
@@ -22,15 +22,15 @@ for i = 1:L
 end
 
 % plot the topology
-figure; 
-hold on;
-for i = 1:L
-    plot([real(txPosition(i)),real(rxPosition(i))],[imag(txPosition(i)),imag(rxPosition(i))],'k');
-end
-plot(real(txPosition), imag(txPosition),'k.');
-plot(real(rxPosition), imag(rxPosition),'k.');
+%figure; 
+%hold on;
+%for i = 1:L
+%    plot([real(txPosition(i)),real(rxPosition(i))],[imag(txPosition(i)),imag(rxPosition(i))],'k');
+%end
+%plot(real(txPosition), imag(txPosition),'k.');
+%plot(real(rxPosition), imag(rxPosition),'k.');
 % axis([-1 1 -1 1]*1.5); legend('Macro BS','Femto BS','MS');
-xlabel('km'); ylabel('km');
+%xlabel('km'); ylabel('km');
 
 c = 3e8; % speed of light
 freq = 2.4e9; % in Hz
@@ -50,8 +50,9 @@ for i = 1:L
     end
 end
 
-PL = PL + randn(L,L)*10 - 2.5 + 7; % shadowing; ante gain; noie figure
-
+PL = PL + randn(L,L)*8 - 2.5 + 7; % shadowing; ante gain; noie figure
+% add in fast fading
+%PL = PL * (randn(L,L).^2 + randn(L,L).^2)/2
 G = 10.^(-PL/10);
 
 end

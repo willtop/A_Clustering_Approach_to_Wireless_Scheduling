@@ -4,7 +4,7 @@ L = obj.numBS;
 K = obj.numUser;
 maxPower = obj.maxPower;
 schedule = 1:L;
-numIter = 100;
+numIter = 50;
 
 global converge
 

@@ -10,25 +10,18 @@ def proportional_update_weights(general_para, rates, weights):
 def FP_prop_fair(general_para, gains, directlink_channel_losses, crosslink_channel_losses):
     number_of_layouts, N = np.shape(directlink_channel_losses)
     allocs_alltime = []
-    allocs_raw_alltime = []
     rates_alltime = []
-    prop_weights_alltime = []
     prop_weights = np.ones([number_of_layouts, N])
     for i in range(general_para.log_utility_time_slots):
         if ((i + 1) * 100 / general_para.log_utility_time_slots % 50 == 0):
             print("[FP Log Util] At {}/{} time slots...".format(i + 1, general_para.log_utility_time_slots))
-        allocs, raw_allocs = benchmarks.FP(general_para, gains, prop_weights, scheduling_output=True)
+        allocs = benchmarks.FP(general_para, gains, prop_weights, scheduling_output=True)
         rates = utils.compute_rates(general_para, allocs, directlink_channel_losses, crosslink_channel_losses)
         allocs_alltime.append(allocs)
-        allocs_raw_alltime.append(raw_allocs)
         rates_alltime.append(rates)
-        prop_weights_alltime.append(prop_weights)
         prop_weights = proportional_update_weights(general_para, rates, prop_weights)
     allocs_alltime = np.transpose(np.array(allocs_alltime), (1, 0, 2))
     rates_alltime = np.transpose(np.array(rates_alltime), (1, 0, 2))
-    allocs_raw_alltime = np.transpose(np.array(allocs_raw_alltime), (1, 0, 2))
-    prop_weights_alltime = np.transpose(np.array(prop_weights_alltime), (1, 0, 2))
-    np.save("proportional_fairness_weights_{}.npy".format(general_para.setting_str), prop_weights_alltime)
     assert np.shape(allocs_alltime) == np.shape(rates_alltime) == (number_of_layouts, general_para.log_utility_time_slots, N)
     return allocs_alltime, rates_alltime
 

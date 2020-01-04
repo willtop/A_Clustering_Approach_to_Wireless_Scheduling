@@ -1,6 +1,6 @@
 function [ schedule, power ] = runAlgorithm( obj, weight )
 
-numIter = 50;
+numIter = 100;
 
 switch obj.algorithm
     case 'FP'
