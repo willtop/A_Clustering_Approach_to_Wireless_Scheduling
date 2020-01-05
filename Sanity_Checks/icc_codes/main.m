@@ -22,7 +22,7 @@ for layout_id = 1:500
     maxPower = ones(1,numBS)*10^((20-30)/10);
     [ G ] = generateNetwork( numBS );
 
-    algorithms = [1,2];
+    algorithms = [2];
     algorithm = cell(9,1);
     algorithm{1} = 'FP';
     algorithm{2} = 'FP2';

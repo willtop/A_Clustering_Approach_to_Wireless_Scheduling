@@ -62,7 +62,7 @@ if(__name__ =='__main__'):
     assert np.shape(layouts) == (n_layouts, N, 4) and np.shape(path_losses) == (n_layouts, N, N)
     print("Evaluate {} over {} layouts".format(general_para.setting_str, n_layouts))
 
-    for channel_model in ["With Shadowing & Fading"]:
+    for channel_model in ["Pure Path Losses", "With Fading", "With Shadowing & Fading"]:
         print("<<<<<<<<<<<<<<<<<<<<<<<<<<<<Evaluating {}>>>>>>>>>>>>>>>>>>>>>>>>>>>>>".format(channel_model))
         if channel_model == "Pure Path Losses":
             channel_losses = path_losses
@@ -80,7 +80,7 @@ if(__name__ =='__main__'):
         all_cluster_assignments = {}
 
         # Integer results
-        all_allocs["FP Scheduling"], _ = benchmarks.FP(general_para, channel_losses, np.ones([n_layouts, N]), scheduling_output=True)
+        all_allocs["FP Scheduling"] = benchmarks.FP(general_para, channel_losses, np.ones([n_layouts, N]), scheduling_output=True)
         n_links_on_FP = np.sum(all_allocs["FP Scheduling"],axis=1)
 
         cluster_assignments = []

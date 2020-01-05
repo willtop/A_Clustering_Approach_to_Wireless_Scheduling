@@ -50,7 +50,7 @@ for i = 1:L
     end
 end
 
-PL = PL + randn(L,L)*8 - 2.5 + 7; % shadowing; ante gain; noie figure
+PL = PL + randn(L,L)*10 - 2.5 + 7; % shadowing; ante gain; noie figure
 % add in fast fading
 %PL = PL * (randn(L,L).^2 + randn(L,L).^2)/2
 G = 10.^(-PL/10);
