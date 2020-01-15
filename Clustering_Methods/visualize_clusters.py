@@ -4,7 +4,7 @@ import sys
 sys.path.append("../Utilities_Research/")
 import utils
 
-def visualize_layout_clusters(layout, cluster_assignments, centroids=[]):
+def visualize_layout_clusters(layout, cluster_assignments, method_name):
     N = np.shape(layout)[0]
     n_clusters = np.max(cluster_assignments)+1 # zero indexing
     assert np.shape(layout)==(N, 4)
@@ -15,9 +15,8 @@ def visualize_layout_clusters(layout, cluster_assignments, centroids=[]):
     for i in range(N):
         links_colors.append(color_map(cluster_assignments[i]))
     ax = plt.gca()
-    utils.plot_allocs_on_layout(ax, layout, links_colors, "Clusters Visualization with {} clusters".format(n_clusters), whether_allocs=False, cluster_assignments=cluster_assignments)
-    if np.size(centroids)>0:
-        assert np.shape(centroids)==(n_clusters, 2)
-        ax.scatter(centroids[:,0], centroids[:,1], marker="*", label="Centroids", s=11)
+    ax.set_aspect('equal', adjustable='box')
+    utils.plot_allocs_on_layout(ax, layout, links_colors, "{} Clusters Visualization".format(method_name), whether_allocs=False, cluster_assignments=cluster_assignments)
+    plt.tight_layout()
     plt.show()
     return

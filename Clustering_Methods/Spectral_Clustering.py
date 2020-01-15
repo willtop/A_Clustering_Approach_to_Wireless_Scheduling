@@ -30,7 +30,7 @@ def clustering(layout, channel_losses_mat, n_links_on):
     cluster_assignments = km.labels_
     assert np.shape(cluster_assignments) == (N, )
     if (VISUALIZE):
-        visualize_clusters.visualize_layout_clusters(layout, cluster_assignments)
+        visualize_clusters.visualize_layout_clusters(layout, cluster_assignments, "Spectral Clustering")
     return cluster_assignments
 
 def scheduling(channel_losses_mat, cluster_assignments):

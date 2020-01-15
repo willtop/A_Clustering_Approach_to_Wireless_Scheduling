@@ -9,10 +9,9 @@ sys.path.append("../Utilities_Research/")
 import benchmarks
 import general_parameters
 import utils
+from clustering_scheduling_caller import clustering, scheduling
 import proportional_fairness_scheduling
-import Spectral_Clustering
-import Hierarchical_Clustering
-import K_Means
+
 
 debug_visualize = False # visualize allocations and rates of each method
 
@@ -27,7 +26,6 @@ def compute_avg_ratio(result_dict, title):
             continue
         ratios = result_dict[method_key] / result_dict["FP Scheduling"] * 100
         print("[{}]: avg {}% of {};".format(method_key, round(np.mean(ratios), 2), "FP Scheduling"), end="")
-        print("{} mean value: {}".format(method_key, np.mean(result_dict[method_key])))
     print("\n")
     return
 
@@ -50,7 +48,7 @@ def plot_rates_CDF(general_para, rate_results, task_title, channel_model):
         rates = np.sort(rate_results[method_key])
         plt.plot(rates / 1e6, np.arange(1, np.size(rates) + 1) / np.size(rates), label="{}".format(method_key), color=line_colors[method_index])
         plt.legend()
-    plt.savefig("{}.png".format(plot_description))
+    plt.show()
     return
 
 if(__name__ =='__main__'):
@@ -62,7 +60,7 @@ if(__name__ =='__main__'):
     assert np.shape(layouts) == (n_layouts, N, 4) and np.shape(path_losses) == (n_layouts, N, N)
     print("Evaluate {} over {} layouts".format(general_para.setting_str, n_layouts))
 
-    for channel_model in ["Pure Path Losses", "With Fading", "With Shadowing & Fading"]:
+    for channel_model in ["Pure Path Losses", "With Shadowing & Fading"]:
         print("<<<<<<<<<<<<<<<<<<<<<<<<<<<<Evaluating {}>>>>>>>>>>>>>>>>>>>>>>>>>>>>>".format(channel_model))
         if channel_model == "Pure Path Losses":
             channel_losses = path_losses
@@ -81,52 +79,22 @@ if(__name__ =='__main__'):
 
         # Integer results
         all_allocs["FP Scheduling"] = benchmarks.FP(general_para, channel_losses, np.ones([n_layouts, N]), scheduling_output=True)
-        n_links_on_FP = np.sum(all_allocs["FP Scheduling"],axis=1)
+        n_links_on_FP_sumrate = np.sum(all_allocs["FP Scheduling"],axis=1)
 
-        cluster_assignments = []
-        allocs = []
-        for i in range(n_layouts):
-            if ((i + 1) * 100 / n_layouts % 50 == 0):
-                print("[SC SumRate] At {}/{} layouts.".format(i + 1, n_layouts))
-            clusters_one_layout = Spectral_Clustering.clustering(layouts[i], channel_losses[i], n_links_on_FP[i])
-            allocs_one_layout = Spectral_Clustering.scheduling(channel_losses[i], clusters_one_layout)
-            cluster_assignments.append(clusters_one_layout)
-            allocs.append(allocs_one_layout)
-        cluster_assignments = np.array(cluster_assignments)
-        allocs = np.array(allocs)
-        assert np.shape(cluster_assignments) == np.shape(allocs) == (n_layouts, N)
-        all_allocs["Spectral Clustering"] = allocs
-        all_cluster_assignments["Spectral Clustering"] = cluster_assignments
-
-        cluster_assignments = []
-        allocs = []
-        for i in range(n_layouts):
-            if ((i + 1) * 100 / n_layouts % 50 == 0):
-                print("[HC SumRate] At {}/{} layouts.".format(i + 1, n_layouts))
-            clusters_one_layout = Hierarchical_Clustering.clustering(layouts[i], channel_losses[i], n_links_on_FP[i])
-            allocs_one_layout = Hierarchical_Clustering.scheduling(channel_losses[i], clusters_one_layout)
-            cluster_assignments.append(clusters_one_layout)
-            allocs.append(allocs_one_layout)
-        cluster_assignments = np.array(cluster_assignments)
-        allocs = np.array(allocs)
-        assert np.shape(cluster_assignments) == np.shape(allocs) == (n_layouts, N)
-        all_allocs["Hierarchical Clustering"] = allocs
-        all_cluster_assignments["Hierarchical Clustering"] = cluster_assignments
-
-        cluster_assignments = []
-        allocs = []
-        for i in range(n_layouts):
-            if ((i + 1) * 100 / n_layouts % 50 == 0):
-                print("[KM SumRate] At {}/{} layouts.".format(i + 1, n_layouts))
-            clusters_one_layout = K_Means.clustering(layouts[i], n_links_on_FP[i])
-            allocs_one_layout = K_Means.scheduling(layouts[i], clusters_one_layout)
-            cluster_assignments.append(clusters_one_layout)
-            allocs.append(allocs_one_layout)
-        cluster_assignments = np.array(cluster_assignments)
-        allocs = np.array(allocs)
-        assert np.shape(cluster_assignments) == np.shape(allocs) == (n_layouts, N)
-        all_allocs["K-Means"] = allocs
-        all_cluster_assignments["K-Means"] = cluster_assignments
+        for clustering_method in ["Spectral Clustering", "Hierarchical Clustering", "K-Means", "Hierarchical Clustering EqualSize", "K-Means EqualSize"]:
+            print("{} Sum Rate...".format(clustering_method))
+            allocs = []
+            for i in range(n_layouts):
+                clusters_one_layout = clustering(layouts[i], channel_losses[i], n_links_on_FP_sumrate[i], clustering_method)
+                if(clustering_method in ["K-Means", "K-Means Equal"]):
+                    inputs = layouts[i]
+                else:
+                    inputs = channel_losses[i]
+                allocs_one_layout = scheduling(inputs, clusters_one_layout, clustering_method)
+                allocs.append(allocs_one_layout)
+            allocs = np.array(allocs)
+            assert np.shape(allocs) == (n_layouts, N)
+            all_allocs[clustering_method] = allocs
 
         all_allocs["Greedy Scheduling"] = benchmarks.greedy_scheduling(general_para, directlink_channel_losses, crosslink_channel_losses, np.ones([n_layouts, N]))
         all_allocs["All Active"] = np.ones([n_layouts, N]).astype(float)
@@ -192,9 +160,8 @@ if(__name__ =='__main__'):
         print("Evaluating log long-term avg rate results...")
 
         all_allocs_prop_fair["FP Scheduling"], links_rates_prop_fair["FP Scheduling"] = proportional_fairness_scheduling.FP_prop_fair(general_para, channel_losses, directlink_channel_losses, crosslink_channel_losses)
-        all_allocs_prop_fair["K-Means"], links_rates_prop_fair["K-Means"] = proportional_fairness_scheduling.K_Means_prop_fair(general_para, directlink_channel_losses, crosslink_channel_losses, all_cluster_assignments["K-Means"])
-        all_allocs_prop_fair["Spectral Clustering"], links_rates_prop_fair["Spectral Clustering"] = proportional_fairness_scheduling.Spectral_Clustering_prop_fair(general_para, directlink_channel_losses, crosslink_channel_losses, all_cluster_assignments["Spectral Clustering"])
-        all_allocs_prop_fair["Hierarchical Clustering"], links_rates_prop_fair["Hierarchical Clustering"] = proportional_fairness_scheduling.Hierarchical_Clustering_prop_fair(general_para, directlink_channel_losses, crosslink_channel_losses, all_cluster_assignments["Hierarchical Clustering"])
+        for method_key in ["Spectral Clustering", "Hierarchical Clustering", "Hierarchical Clustering-EqualSize", "K-Means", "K-Means-EqualSize"]:
+            all_allocs_prop_fair[method_key], links_rates_prop_fair[method_key] = proportional_fairness_scheduling.Clustering_based_prop_fair(general_para, directlink_channel_losses, crosslink_channel_losses, all_cluster_assignments[method_key], method_key)
         all_allocs_prop_fair["Greedy Scheduling"], links_rates_prop_fair["Greedy Scheduling"] = proportional_fairness_scheduling.Greedy_Scheduling_prop_fair(general_para, directlink_channel_losses, crosslink_channel_losses)
         all_allocs_prop_fair["All Active"], links_rates_prop_fair["All Active"] = proportional_fairness_scheduling.all_active_prop_fair(general_para, directlink_channel_losses, crosslink_channel_losses)
         all_allocs_prop_fair["Random Scheduling"], links_rates_prop_fair["Random Scheduling"] = proportional_fairness_scheduling.random_scheduling_prop_fair(general_para, directlink_channel_losses, crosslink_channel_losses)

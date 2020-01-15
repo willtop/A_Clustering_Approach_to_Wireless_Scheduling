@@ -7,6 +7,8 @@ from itertools import cycle
 def proportional_update_weights(general_para, rates, weights):
     return 1 / (general_para.alpha_proportional_fairness_update / weights + (1 - general_para.alpha_proportional_fairness_update) * rates)
 
+# Modification: during proportional fairness, FP may encounter not scheduling any link and get stuck there
+# According to prof's suggestion: activate the strongest link if no link is activated
 def FP_prop_fair(general_para, gains, directlink_channel_losses, crosslink_channel_losses):
     number_of_layouts, N = np.shape(directlink_channel_losses)
     allocs_alltime = []
@@ -16,6 +18,12 @@ def FP_prop_fair(general_para, gains, directlink_channel_losses, crosslink_chann
         if ((i + 1) * 100 / general_para.log_utility_time_slots % 50 == 0):
             print("[FP Log Util] At {}/{} time slots...".format(i + 1, general_para.log_utility_time_slots))
         allocs = benchmarks.FP(general_para, gains, prop_weights, scheduling_output=True)
+        if np.any(np.sum(allocs, -1)==0):
+            # Having a layout producing all zero scheduling outputs after quantization
+            # Activate the link with the highest weights
+            layouts_got_stuck = np.where(np.sum(allocs, -1)==0)[0]
+            strongest_links_scheduling = (prop_weights[layouts_got_stuck] == np.max(prop_weights[layouts_got_stuck],axis=1,keepdims=True)).astype(int)
+            allocs[layouts_got_stuck] = strongest_links_scheduling
         rates = utils.compute_rates(general_para, allocs, directlink_channel_losses, crosslink_channel_losses)
         allocs_alltime.append(allocs)
         rates_alltime.append(rates)
@@ -25,11 +33,12 @@ def FP_prop_fair(general_para, gains, directlink_channel_losses, crosslink_chann
     assert np.shape(allocs_alltime) == np.shape(rates_alltime) == (number_of_layouts, general_para.log_utility_time_slots, N)
     return allocs_alltime, rates_alltime
 
+# General function for proportional fairness scheduling based on round robin with all sorts of cluster assignments
 # For now, the round robin iterating order is random within each cluster (with fixed orders for each round)
 # unlike prioritizing the link with the strongest direct link gain
 # Can't think of a way to parallelize among layouts or even clusters within the same layout. For now, linearly
 # go through each cluster within each layout with cycle iterators.
-def Spectral_Clustering_prop_fair(general_para, directlink_channel_losses, crosslink_channel_losses, cluster_assignments):
+def Clustering_based_prop_fair(general_para, directlink_channel_losses, crosslink_channel_losses, cluster_assignments, method_name):
     number_of_layouts, N = np.shape(directlink_channel_losses)
     assert np.shape(cluster_assignments) == (number_of_layouts, N)
     n_clusters = (np.max(cluster_assignments, axis=1)+1).astype(int) # number of layouts
@@ -45,77 +54,7 @@ def Spectral_Clustering_prop_fair(general_para, directlink_channel_losses, cross
     # Start sequential time slots scheduling
     for time_slot in range(general_para.log_utility_time_slots):
         if ((time_slot + 1) * 100 / general_para.log_utility_time_slots % 50 == 0):
-            print("[SC Log Util] At {}/{} time slots...".format(time_slot + 1, general_para.log_utility_time_slots))
-        allocs = np.zeros([number_of_layouts, N])
-        for layout_id in range(number_of_layouts):
-            for cluster_id in range(n_clusters[layout_id]):
-                iterator_to_schedule = iterators_all_layouts[layout_id][cluster_id]
-                link_to_schedule = next(iterator_to_schedule)
-                allocs[layout_id][link_to_schedule] = 1
-        rates = utils.compute_rates(general_para, allocs, directlink_channel_losses, crosslink_channel_losses)
-        allocs_alltime.append(allocs)
-        rates_alltime.append(rates)
-    allocs_alltime = np.transpose(np.array(allocs_alltime), (1, 0, 2))
-    rates_alltime = np.transpose(np.array(rates_alltime), (1, 0, 2))
-    assert np.shape(allocs_alltime) == np.shape(rates_alltime) == (number_of_layouts, general_para.log_utility_time_slots, N)
-    return allocs_alltime, rates_alltime
-
-# For now, the round robin iterating order is random within each cluster (with fixed orders for each round)
-# unlike prioritizing the link with the strongest direct link gain
-# Can't think of a way to parallelize among layouts or even clusters within the same layout. For now, linearly
-# go through each cluster within each layout with cycle iterators.
-def Hierarchical_Clustering_prop_fair(general_para, directlink_channel_losses, crosslink_channel_losses, cluster_assignments):
-    number_of_layouts, N = np.shape(directlink_channel_losses)
-    assert np.shape(cluster_assignments) == (number_of_layouts, N)
-    n_clusters = (np.max(cluster_assignments, axis=1)+1).astype(int) # number of layouts
-    allocs_alltime = []
-    rates_alltime = []
-    # create iterator
-    iterators_all_layouts = []
-    for layout_id in range(number_of_layouts):
-        iterators_one_layout = []
-        for cluster_id in range(n_clusters[layout_id]):
-            iterators_one_layout.append(cycle(np.where(cluster_assignments[layout_id]==cluster_id)[0]))
-        iterators_all_layouts.append(iterators_one_layout)
-    # Start sequential time slots scheduling
-    for time_slot in range(general_para.log_utility_time_slots):
-        if ((time_slot + 1) * 100 / general_para.log_utility_time_slots % 50 == 0):
-            print("[HC Log Util] At {}/{} time slots...".format(time_slot + 1, general_para.log_utility_time_slots))
-        allocs = np.zeros([number_of_layouts, N])
-        for layout_id in range(number_of_layouts):
-            for cluster_id in range(n_clusters[layout_id]):
-                iterator_to_schedule = iterators_all_layouts[layout_id][cluster_id]
-                link_to_schedule = next(iterator_to_schedule)
-                allocs[layout_id][link_to_schedule] = 1
-        rates = utils.compute_rates(general_para, allocs, directlink_channel_losses, crosslink_channel_losses)
-        allocs_alltime.append(allocs)
-        rates_alltime.append(rates)
-    allocs_alltime = np.transpose(np.array(allocs_alltime), (1, 0, 2))
-    rates_alltime = np.transpose(np.array(rates_alltime), (1, 0, 2))
-    assert np.shape(allocs_alltime) == np.shape(rates_alltime) == (number_of_layouts, general_para.log_utility_time_slots, N)
-    return allocs_alltime, rates_alltime
-
-# For now, the round robin iterating order is random within each cluster (with fixed orders for each round)
-# unlike prioritizing the link with the strongest direct link gain
-# Can't think of a way to parallelize among layouts or even clusters within the same layout. For now, linearly
-# go through each cluster within each layout with cycle iterators.
-def K_Means_prop_fair(general_para, directlink_channel_losses, crosslink_channel_losses, cluster_assignments):
-    number_of_layouts, N = np.shape(directlink_channel_losses)
-    assert np.shape(cluster_assignments) == (number_of_layouts, N)
-    n_clusters = (np.max(cluster_assignments, axis=1) + 1).astype(int)  # number of layouts
-    allocs_alltime = []
-    rates_alltime = []
-    # create iterator
-    iterators_all_layouts = []
-    for layout_id in range(number_of_layouts):
-        iterators_one_layout = []
-        for cluster_id in range(n_clusters[layout_id]):
-            iterators_one_layout.append(cycle(np.where(cluster_assignments[layout_id] == cluster_id)[0]))
-        iterators_all_layouts.append(iterators_one_layout)
-    # Start sequential time slots scheduling
-    for time_slot in range(general_para.log_utility_time_slots):
-        if ((time_slot + 1) * 100 / general_para.log_utility_time_slots % 50 == 0):
-            print("[KM Log Util] At {}/{} time slots...".format(time_slot + 1, general_para.log_utility_time_slots))
+            print("[{} Log Util] At {}/{} time slots...".format(time_slot + 1, general_para.log_utility_time_slots, method_name))
         allocs = np.zeros([number_of_layouts, N])
         for layout_id in range(number_of_layouts):
             for cluster_id in range(n_clusters[layout_id]):

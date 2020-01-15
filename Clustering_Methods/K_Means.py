@@ -1,6 +1,5 @@
 # K-Means for clustering interferencing links
-# To ensure the viability of using K-Means, with the gauranteed stabelizing clustering
-# Gonna simply use the mid-point of each transceiver pair as the representative point of the link
+# To ensure the viability of using K-Means,gonna simply use the mid-point of each transceiver pair as the representative point of the link
 
 import numpy as np
 from sklearn.cluster import KMeans
@@ -16,11 +15,9 @@ def clustering(layout, n_links_on):
     assert np.shape(layout_midpoints) == (N,2)
     km = KMeans(n_clusters=n_links_on, n_init=10).fit(layout_midpoints)
     cluster_assignments = km.labels_
-    centroids = km.cluster_centers_
     assert np.shape(cluster_assignments)==(N,)
-    assert np.shape(centroids)==(n_links_on, 2)
     if (VISUALIZE):
-        visualize_clusters.visualize_layout_clusters(layout, cluster_assignments, centroids)
+        visualize_clusters.visualize_layout_clusters(layout, cluster_assignments, "K-Means")
     return cluster_assignments
 
 def scheduling(layout, cluster_assignments):
