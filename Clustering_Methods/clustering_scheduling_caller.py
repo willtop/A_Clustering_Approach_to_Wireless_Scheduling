@@ -1,4 +1,13 @@
-# This is a script that serves as a caller invoking different clustering scripts based on a string parameter
+# For any reproduce, further research or development, please kindly cite our SPAWC conference paper: 
+# @Conference{cluster_schedule, 
+#             author = "W. Cui and W. Yu", 
+#             title = "A Clustering Approach to Wireless Scheduling", 
+#             booktitle = "IEEE Workshop Signal Process. Advances Wireless Commun. (SPAWC)", 
+#             year = 2020, 
+#             month = may }
+#
+# This is a script that serves as a caller invoking different clustering scripts based on a string parameter.
+
 import numpy as np
 import Spectral_Clustering
 import Hierarchical_Clustering

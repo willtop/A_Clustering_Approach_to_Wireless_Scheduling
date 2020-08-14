@@ -1,4 +1,13 @@
+# For any reproduce, further research or development, please kindly cite our SPAWC conference paper: 
+# @Conference{cluster_schedule, 
+#             author = "W. Cui and W. Yu", 
+#             title = "A Clustering Approach to Wireless Scheduling", 
+#             booktitle = "IEEE Workshop Signal Process. Advances Wireless Commun. (SPAWC)", 
+#             year = 2020, 
+#             month = may }
+#
 # Script for computing proportional fairness schedulings over consequtive time slots
+
 import numpy as np
 import benchmarks
 import utils
