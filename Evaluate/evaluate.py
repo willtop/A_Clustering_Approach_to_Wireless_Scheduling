@@ -5,7 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import sys
 sys.path.append("../Clustering_Methods/")
-sys.path.append("../Utilities_Research/")
+sys.path.append("../Utilities/")
 import benchmarks
 import general_parameters
 import utils

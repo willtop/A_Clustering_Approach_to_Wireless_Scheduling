@@ -4,7 +4,7 @@ import numpy as np
 from sklearn.cluster import AgglomerativeClustering
 import matplotlib.pyplot as plt
 import sys
-sys.path.append("../Utilities_Research/")
+sys.path.append("../Utilities/")
 import utils
 
 VISUALIZE = False
