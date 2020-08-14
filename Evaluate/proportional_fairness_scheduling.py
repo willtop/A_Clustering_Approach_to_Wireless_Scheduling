@@ -38,7 +38,8 @@ def FP_prop_fair(general_para, gains, directlink_channel_losses, crosslink_chann
 # unlike prioritizing the link with the strongest direct link gain
 # Can't think of a way to parallelize among layouts or even clusters within the same layout. For now, linearly
 # go through each cluster within each layout with cycle iterators.
-def Clustering_based_prop_fair(general_para, directlink_channel_losses, crosslink_channel_losses, cluster_assignments, method_name):
+def Clustering_based_prop_fair(general_para, directlink_channel_losses, crosslink_channel_losses, cluster_assignments, clustering_method):
+    print("{} Proportional Fairness...".format(clustering_method))
     number_of_layouts, N = np.shape(directlink_channel_losses)
     assert np.shape(cluster_assignments) == (number_of_layouts, N)
     n_clusters = (np.max(cluster_assignments, axis=1)+1).astype(int) # number of layouts
@@ -53,8 +54,6 @@ def Clustering_based_prop_fair(general_para, directlink_channel_losses, crosslin
         iterators_all_layouts.append(iterators_one_layout)
     # Start sequential time slots scheduling
     for time_slot in range(general_para.log_utility_time_slots):
-        if ((time_slot + 1) * 100 / general_para.log_utility_time_slots % 50 == 0):
-            print("[{} Log Util] At {}/{} time slots...".format(time_slot + 1, general_para.log_utility_time_slots, method_name))
         allocs = np.zeros([number_of_layouts, N])
         for layout_id in range(number_of_layouts):
             for cluster_id in range(n_clusters[layout_id]):

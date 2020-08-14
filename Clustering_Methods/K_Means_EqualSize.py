@@ -4,7 +4,10 @@
 
 import numpy as np
 from sklearn.cluster import KMeans
-import visualize_clusters
+import matplotlib.pyplot as plt
+import sys
+sys.path.append("../Utilities_Research/")
+import utils
 
 VISUALIZE = False
 # If assignment entry is -1, then it's not assigned yet
@@ -68,21 +71,13 @@ def clustering(layout, n_links_on):
     # Check whether indeed cluster sizes in the final cluster_assignments result are as desired
     assert np.shape(cluster_assignments)==(N,)
     assert np.all(np.logical_or(cluster_sizes == smaller_cluster_size, cluster_sizes == smaller_cluster_size+1))
+    assert np.shape(centroids) == (n_links_on, 2)
     if (VISUALIZE):
-        visualize_clusters.visualize_layout_clusters(layout, cluster_assignments, "K-Means Same Size")
-    return cluster_assignments
-
-def scheduling(layout, cluster_assignments):
-    N = np.shape(layout)[0]
-    assert np.shape(layout) == (N, 4)
-    assert np.shape(cluster_assignments) == (N,)
-    n_links_on = np.max(cluster_assignments) + 1
-    allocations = np.zeros(N)
-    # Select one shortest link from each cluster to schedule (since CSI isn't available)
-    link_lengths = np.linalg.norm(layout[:, 0:2] - layout[:, 2:4], axis=1)
-    for i in range(n_links_on):
-        links_in_the_cluster = np.where(cluster_assignments == i)[0]
-        shortest_link_in_the_cluster = links_in_the_cluster[np.argmin(link_lengths[links_in_the_cluster])]
-        assert allocations[shortest_link_in_the_cluster] == 0, "having duplicate entry apperance across clusters"
-        allocations[shortest_link_in_the_cluster] = 1
-    return allocations
+        ax = plt.gca()
+        ax.set_aspect('equal', adjustable='box')
+        ax.set_title("K-Means {} Equal-Size Clusters Visualization".format(n_links_on))
+        utils.plot_stations_on_layout(ax, layout)
+        utils.plot_clusters_on_layout(ax, layout, cluster_assignments)
+        plt.tight_layout()
+        plt.show()
+    return cluster_assignments, centroids

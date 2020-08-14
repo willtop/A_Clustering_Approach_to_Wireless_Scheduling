@@ -9,7 +9,7 @@ sys.path.append("../Utilities_Research/")
 import benchmarks
 import general_parameters
 import utils
-from clustering_scheduling_caller import clustering, scheduling
+from clustering_scheduling_caller import clustering_and_scheduling
 import proportional_fairness_scheduling
 
 
@@ -20,12 +20,12 @@ def compute_avg_ratio(result_dict, title):
     assert "FP Scheduling" in result_dict.keys(), "Didn't include FP Scheduling in computation"
     n_layouts = np.size(result_dict["FP Scheduling"])
     print("FP Scheduling mean value: {}".format(np.mean(result_dict["FP Scheduling"])))
-    for method_key in result_dict.keys():
-        assert np.shape(result_dict[method_key])==(n_layouts, ), "Wrong shape for method {}: {}".format(method_key, np.shape(result_dict[method_key]))
-        if (method_key == "FP Scheduling"):
+    for clustering_method in result_dict.keys():
+        assert np.shape(result_dict[clustering_method])==(n_layouts, ), "Wrong shape for method {}: {}".format(clustering_method, np.shape(result_dict[clustering_method]))
+        if (clustering_method == "FP Scheduling"):
             continue
-        ratios = result_dict[method_key] / result_dict["FP Scheduling"] * 100
-        print("[{}]: avg {}% of {};".format(method_key, round(np.mean(ratios), 2), "FP Scheduling"), end="")
+        ratios = result_dict[clustering_method] / result_dict["FP Scheduling"] * 100
+        print("[{}]: avg {}% of {};".format(clustering_method, round(np.mean(ratios), 2), "FP Scheduling"), end="")
     print("\n")
     return
 
@@ -34,20 +34,21 @@ def obtain_line_colors(n_colors): # return colors differentiating among differen
     line_colors = [colormap(1. * i / n_colors) for i in range(n_colors)]
     return line_colors
 
-def plot_rates_CDF(general_para, rate_results, task_title, channel_model):
+def plot_meanrates_CDF(general_para, rate_results):
     fig = plt.figure()
     ax = fig.gca()
-    plot_description = "[{}] {} with channel model {}".format(task_title, general_para.setting_str, channel_model)
-    plt.title(plot_description)
-    plt.xlabel("Mbps")
-    plt.ylabel("Cumulative Distribution of D2D Networks")
+    plt.title("Mean-Rates over Multiple Time-Slots of each D2D Link among All Networks", fontsize=20)
+    plt.xlabel("Mbps", fontsize=20)
+    plt.ylabel("Cumulative Distribution of all D2D Links", fontsize=20)
     plt.grid(linestyle="dotted")
     ax.set_ylim(bottom=0)
+    ax.set_xlim(right=np.percentile(rate_results["FP Scheduling"]/1e6, 90))
     line_colors = obtain_line_colors(len(rate_results.keys()))
-    for method_index, method_key in enumerate(rate_results.keys()):
-        rates = np.sort(rate_results[method_key])
-        plt.plot(rates / 1e6, np.arange(1, np.size(rates) + 1) / np.size(rates), label="{}".format(method_key), color=line_colors[method_index])
-        plt.legend()
+    line_styles = ['-', ':', '-.', '--']
+    for method_index, scheduling_method in enumerate(rate_results.keys()):
+        rates = np.sort(rate_results[scheduling_method])
+        plt.plot(rates / 1e6, np.arange(1, np.size(rates) + 1) / np.size(rates), label="{}".format(scheduling_method), color=line_colors[method_index], linestyle=line_styles[method_index % 4], linewidth=1.2)
+        plt.legend(prop={'size': 18})
     plt.show()
     return
 
@@ -58,9 +59,10 @@ if(__name__ =='__main__'):
     path_losses = np.load(general_para.test_dir + general_para.file_names["path_losses"])
     n_layouts = np.shape(layouts)[0]
     assert np.shape(layouts) == (n_layouts, N, 4) and np.shape(path_losses) == (n_layouts, N, N)
+    all_clustering_methods = ["Spectral Clustering", "Hierarchical Clustering", "Hierarchical Clustering EqualSize", "K-Means", "K-Means EqualSize"]
     print("Evaluate {} over {} layouts".format(general_para.setting_str, n_layouts))
 
-    for channel_model in ["Pure Path Losses", "With Shadowing & Fading"]:
+    for channel_model in ["Pure Path Losses"]:
         print("<<<<<<<<<<<<<<<<<<<<<<<<<<<<Evaluating {}>>>>>>>>>>>>>>>>>>>>>>>>>>>>>".format(channel_model))
         if channel_model == "Pure Path Losses":
             channel_losses = path_losses
@@ -75,25 +77,25 @@ if(__name__ =='__main__'):
         directlink_channel_losses = utils.get_directlink_channel_losses(channel_losses)
         crosslink_channel_losses = utils.get_crosslink_channel_losses(channel_losses)
         all_allocs = {}
-        all_cluster_assignments = {}
+        all_clusters = {}
 
         # Integer results
         all_allocs["FP Scheduling"] = benchmarks.FP(general_para, channel_losses, np.ones([n_layouts, N]), scheduling_output=True)
         n_links_on_FP_sumrate = np.sum(all_allocs["FP Scheduling"],axis=1)
+        print("FP Sumrate activates {}/{} links on avg per layout.".format(np.mean(n_links_on_FP_sumrate), N))
 
-        for clustering_method in ["Spectral Clustering", "Hierarchical Clustering", "K-Means", "Hierarchical Clustering EqualSize", "K-Means EqualSize"]:
+        for clustering_method in all_clustering_methods:
             print("{} Sum Rate...".format(clustering_method))
             allocs = []
+            clusters = []
             for i in range(n_layouts):
-                clusters_one_layout = clustering(layouts[i], channel_losses[i], n_links_on_FP_sumrate[i], clustering_method)
-                if(clustering_method in ["K-Means", "K-Means Equal"]):
-                    inputs = layouts[i]
-                else:
-                    inputs = channel_losses[i]
-                allocs_one_layout = scheduling(inputs, clusters_one_layout, clustering_method)
+                clusters_one_layout, allocs_one_layout = clustering_and_scheduling(layouts[i], channel_losses[i], n_links_on_FP_sumrate[i], clustering_method)
+                clusters.append(clusters_one_layout)
                 allocs.append(allocs_one_layout)
+            clusters = np.array(clusters)
             allocs = np.array(allocs)
-            assert np.shape(allocs) == (n_layouts, N)
+            assert np.shape(clusters) == np.shape(allocs) == (n_layouts, N)
+            all_clusters[clustering_method] = clusters
             all_allocs[clustering_method] = allocs
 
         all_allocs["Greedy Scheduling"] = benchmarks.greedy_scheduling(general_para, directlink_channel_losses, crosslink_channel_losses, np.ones([n_layouts, N]))
@@ -104,54 +106,37 @@ if(__name__ =='__main__'):
 
         # EVALUATION AND COMPARISON
         all_allocs_means = {}
-        for method_key in all_allocs.keys():
-            assert np.shape(all_allocs[method_key]) == (n_layouts, N) # checking dimension validity
-            all_allocs_means[method_key] = np.mean(all_allocs[method_key],axis=1)
+        for clustering_method in all_allocs.keys():
+            assert np.shape(all_allocs[clustering_method]) == (n_layouts, N) # checking dimension validity
+            all_allocs_means[clustering_method] = np.mean(all_allocs[clustering_method],axis=1)
         compute_avg_ratio(all_allocs_means, "Scheduling Mean")
 
         # Evaluate Stage I: single time slot
         links_rates_I = {}
         evaluate_results_I = {}
-        for method_key in all_allocs.keys():
-            links_rates_I[method_key] = utils.compute_rates(general_para, all_allocs[method_key], directlink_channel_losses, crosslink_channel_losses)
-            assert np.shape(links_rates_I[method_key]) == (n_layouts, N)
-            evaluate_results_I[method_key] = np.sum(links_rates_I[method_key], axis=1)
+        for clustering_method in all_allocs.keys():
+            links_rates_I[clustering_method] = utils.compute_rates(general_para, all_allocs[clustering_method], directlink_channel_losses, crosslink_channel_losses)
+            assert np.shape(links_rates_I[clustering_method]) == (n_layouts, N)
+            evaluate_results_I[clustering_method] = np.sum(links_rates_I[clustering_method], axis=1)
         compute_avg_ratio(evaluate_results_I, "Sum Rate Single Timeslot")
-        plot_rates_CDF(general_para, evaluate_results_I, "Sum Rate Single Timeslot", channel_model)
 
-        # visualize allocations for worst and best layouts, 3 each
-        if(debug_visualize):
-            for method_key in all_allocs.keys():
-                if(method_key in ["All Active", "Random Power Control", "Random Scheduling", "Strongest Link", "Directlinks Inverse Proportions"]):
-                    continue # Don't plot for these trivial allocations
-                fig, axs = plt.subplots(nrows=2,ncols=3)
-                fig.suptitle("{} allocs for Sum Rate Single Timeslot".format(method_key))
-                layout_indices_ranked = np.argsort(evaluate_results_I[method_key])
-                rank_titles = {0: "Worst",   1: "2nd Worst", 2: "3rd Worst",  -1: "Best", -2: "2nd Best",  -3: "3rd Best"}
+        # visualize clustering based methods allocations for worst and best layouts, 3 each
+        if (debug_visualize):
+            for clustering_method in all_clustering_methods:
+                fig, axs = plt.subplots(nrows=2, ncols=3)
+                fig.suptitle("{} clustering and scheduling for Sum-Rate".format(clustering_method))
+                layout_indices_ranked = np.argsort(evaluate_results_I[clustering_method])
+                rank_titles = {0: "Worst", 1: "2nd Worst", 2: "3rd Worst", -1: "Best", -2: "2nd Best", -3: "3rd Best"}
                 for i, rank_tuple in enumerate(rank_titles.items()):
-                    v_layout_index = layout_indices_ranked[rank_tuple[0]]
-                    v_alloc = all_allocs[method_key][v_layout_index]
-                    layout = layouts[v_layout_index]
-                    utils.plot_allocs_on_layout(axs.flatten()[i], layout, v_alloc, rank_tuple[1])
-                plt.show()
-
-            # compare allocations between neural network or spectral clustering and the corresponding best benchmark
-            layouts_to_visualize = np.random.randint(low=0, high=n_layouts, size=3)
-            for layout_to_visualize in layouts_to_visualize:
-                plt.title("Layout #{}".format(layout_to_visualize))
-                ax = plt.subplot(241)
-                utils.plot_allocs_on_layout(ax, layouts[layout_to_visualize], all_allocs["FP Scheduling"][layout_to_visualize], "FP Scheduling")
-                ax = plt.subplot(242)
-                utils.plot_allocs_on_layout(ax, layouts[layout_to_visualize], all_allocs['Spectral Clustering'][layout_to_visualize], "Spectral Clustering")
-                ax = plt.subplot(243)
-                utils.plot_allocs_on_layout(ax, layouts[layout_to_visualize], all_allocs['Hierarchical Clustering'][layout_to_visualize], "Spectral Clustering")
-                ax = plt.subplot(244)
-                utils.plot_allocs_on_layout(ax, layouts[layout_to_visualize], all_allocs['K-Means'][layout_to_visualize], "K-Means")
-                ax = plt.subplot(212)
-                ax.plot(all_allocs["FP Scheduling"][layout_to_visualize], 'b', label="FP Scheduling")
-                ax.plot(all_allocs['Spectral Clustering'][layout_to_visualize], 'r--', linewidth=1.2, label='Spectral Clustering')
-                ax.plot(all_allocs['K-Means'][layout_to_visualize], 'g--', linewidth=1.2, label='K-Means')
-                ax.legend()
+                    layout_index = layout_indices_ranked[rank_tuple[0]]
+                    layout = layouts[layout_index]
+                    clusters = all_clusters[clustering_method][layout_index]
+                    allocs = all_allocs[clustering_method][layout_index]
+                    ax = axs.flatten()[i]
+                    ax.set_title(rank_tuple[1])
+                    utils.plot_stations_on_layout(ax, layout)
+                    utils.plot_clusters_on_layout(ax, layout, clusters)
+                    utils.plot_schedules_on_layout(ax, layout, allocs)
                 plt.show()
 
         # Evaluate Stage II: multiple time slots
@@ -160,24 +145,35 @@ if(__name__ =='__main__'):
         print("Evaluating log long-term avg rate results...")
 
         all_allocs_prop_fair["FP Scheduling"], links_rates_prop_fair["FP Scheduling"] = proportional_fairness_scheduling.FP_prop_fair(general_para, channel_losses, directlink_channel_losses, crosslink_channel_losses)
-        for method_key in ["Spectral Clustering", "Hierarchical Clustering", "Hierarchical Clustering-EqualSize", "K-Means", "K-Means-EqualSize"]:
-            all_allocs_prop_fair[method_key], links_rates_prop_fair[method_key] = proportional_fairness_scheduling.Clustering_based_prop_fair(general_para, directlink_channel_losses, crosslink_channel_losses, all_cluster_assignments[method_key], method_key)
+        # With taking ceil, always have slightly lower number as the number of clusters than FP long-term avg over time slots
+        n_links_on_FP_propfair = np.floor(np.sum(np.mean(all_allocs_prop_fair["FP Scheduling"], axis=1),axis=1)).astype(int)
+        print("FP Propfair activates {}/{} links on avg per layout.".format(np.mean(n_links_on_FP_propfair), N))
+        assert np.shape(n_links_on_FP_propfair) == (n_layouts, )
+        for clustering_method in all_clustering_methods:
+            # Construct clusters first
+            cluster_assignments = []
+            for i in range(n_layouts):
+                clusters_one_layout, _ = clustering_and_scheduling(layouts[i], channel_losses[i], n_links_on_FP_propfair[i], clustering_method)
+                cluster_assignments.append(clusters_one_layout)
+            cluster_assignments = np.array(cluster_assignments)
+            assert np.shape(cluster_assignments) == (n_layouts, N)
+            all_allocs_prop_fair[clustering_method], links_rates_prop_fair[clustering_method] = proportional_fairness_scheduling.Clustering_based_prop_fair(general_para, directlink_channel_losses, crosslink_channel_losses, cluster_assignments, clustering_method)
         all_allocs_prop_fair["Greedy Scheduling"], links_rates_prop_fair["Greedy Scheduling"] = proportional_fairness_scheduling.Greedy_Scheduling_prop_fair(general_para, directlink_channel_losses, crosslink_channel_losses)
         all_allocs_prop_fair["All Active"], links_rates_prop_fair["All Active"] = proportional_fairness_scheduling.all_active_prop_fair(general_para, directlink_channel_losses, crosslink_channel_losses)
         all_allocs_prop_fair["Random Scheduling"], links_rates_prop_fair["Random Scheduling"] = proportional_fairness_scheduling.random_scheduling_prop_fair(general_para, directlink_channel_losses, crosslink_channel_losses)
-        # Simplest round robin (one at a time)
-        all_allocs_prop_fair["Vanilla Round Robin"], links_rates_prop_fair["Vanilla Round Robin"] = proportional_fairness_scheduling.vanilla_round_robin_prop_fair(general_para, directlink_channel_losses, crosslink_channel_losses)
+        # Simplest round robin (one at a time). Not plotting this for the final paper.
+        # all_allocs_prop_fair["Vanilla Round Robin"], links_rates_prop_fair["Vanilla Round Robin"] = proportional_fairness_scheduling.vanilla_round_robin_prop_fair(general_para, directlink_channel_losses, crosslink_channel_losses)
 
         # Compute sum log avg rate utility
         links_avg_rates_II = {}
         print("[Layouts Avg for sum log mean rate (Mbps)]:")
-        for method_key, rates in links_rates_prop_fair.items():
+        for clustering_method, rates in links_rates_prop_fair.items():
             assert np.shape(rates) == (n_layouts, general_para.log_utility_time_slots, N)
-            links_avg_rates_II[method_key] = np.mean(rates, axis=1) # number of layouts X N
-            evaluate_result = np.sum(np.log(links_avg_rates_II[method_key]/1e6), axis=1) # number of layouts
-            links_avg_rates_II[method_key] = links_avg_rates_II[method_key].flatten() # flatten for plotting
-            print("[{}]:{};".format(method_key, round(np.mean(evaluate_result),2)), end="")
+            links_avg_rates_II[clustering_method] = np.mean(rates, axis=1) # number of layouts X N
+            evaluate_result = np.sum(np.log(links_avg_rates_II[clustering_method]/1e6), axis=1) # number of layouts
+            links_avg_rates_II[clustering_method] = links_avg_rates_II[clustering_method].flatten() # flatten for plotting
+            print("[{}]:{};".format(clustering_method, round(np.mean(evaluate_result),2)), end="")
         print("\n")
-        plot_rates_CDF(general_para, links_avg_rates_II, "Log Utilities Multiple Timeslots", channel_model)
+        plot_meanrates_CDF(general_para, links_avg_rates_II)
 
     print("Script Completed Successfully!")

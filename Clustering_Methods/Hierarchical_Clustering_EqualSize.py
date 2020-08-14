@@ -2,8 +2,7 @@
 # This is inspired by: http://jmonlong.github.io/Hippocamplus/2018/06/09/cluster-same-size/
 
 import numpy as np
-from sklearn.cluster import KMeans
-import visualize_clusters
+import matplotlib.pyplot as plt
 import sys
 sys.path.append("../Utilities_Research/")
 import utils
@@ -84,22 +83,13 @@ def clustering(layout, channel_losses_mat, n_links_on):
             break
         # Update the cluster size targets since the cluster just formed might be larger than desired
         cluster_size_target = compute_1st_cluster_size_target(n_points_left, n_links_on-cluster_id)
-    # Check whether indeed cluster sizes in the final cluster_assignments result are as desired
     assert np.shape(cluster_assignments)==(N,)
     if (VISUALIZE):
-        visualize_clusters.visualize_layout_clusters(layout, cluster_assignments, "Hierarchical Clustering Same Size")
+        ax = plt.gca()
+        ax.set_aspect('equal', adjustable='box')
+        ax.set_title("Hierarchical Clustering {} Equal-Size Clusters Visualization".format(n_links_on))
+        utils.plot_stations_on_layout(ax, layout)
+        utils.plot_clusters_on_layout(ax, layout, cluster_assignments)
+        plt.tight_layout()
+        plt.show()
     return cluster_assignments
-
-def scheduling(channel_losses_mat, cluster_assignments):
-    N = np.shape(channel_losses_mat)[0]
-    assert np.shape(channel_losses_mat) == (N, N)
-    assert np.shape(cluster_assignments) == (N, )
-    allocations = np.zeros(N)
-    # Select one strongest link from each cluster to schedule
-    n_links_on = np.max(cluster_assignments)+1
-    for i in range(n_links_on):
-        links_in_the_cluster = np.where(cluster_assignments == i)[0]
-        strongest_link_in_the_cluster = links_in_the_cluster[np.argmax(np.diag(channel_losses_mat)[links_in_the_cluster])]
-        assert allocations[strongest_link_in_the_cluster] == 0, "having duplicate entry appearence across clusters"
-        allocations[strongest_link_in_the_cluster] = 1
-    return allocations
